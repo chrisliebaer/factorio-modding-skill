@@ -1,0 +1,66 @@
+[project]
+name = "factorio-docs"
+version = "0.1.0"
+description = "Generate agent-readable Factorio API documentation"
+authors = [{ name = "Chrisliebär", email = "mail@chrisliebaer.de" }]
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+	"beautifulsoup4>=4.13,<5",
+	"html-to-markdown>=3.10,<4",
+	"lxml>=6,<7",
+	"pydantic>=2.12.5,<3",
+]
+
+[project.scripts]
+factorio-docs = "factorio_docs.cli:main"
+
+[dependency-groups]
+dev = ["basedpyright>=1.31.7,<2", "pytest>=8.4.2,<9", "ruff>=0.13.2,<1"]
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+	"ANN",
+	"ARG",
+	"B",
+	"C4",
+	"DTZ",
+	"E",
+	"EM",
+	"F",
+	"G",
+	"I",
+	"LOG",
+	"N",
+	"PTH",
+	"PYI",
+	"RET",
+	"RUF",
+	"SIM",
+	"TRY",
+	"UP",
+	"W",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.basedpyright]
+include = ["src", "tests", "tools"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+venv = ".venv"
+venvPath = "."
