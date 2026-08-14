@@ -1,0 +1,209 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Semantic version component to increment
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: read # Inspect the required CI and workflow-security runs.
+      contents: write # Push the release commit and tag, then create the release.
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      UV_NO_PROGRESS: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.31"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Just
+        uses: taiki-e/install-action@9d3c324c3d96aa345b0602e11b7ca196bcd2d282
+        with:
+          tool: just@1.57.0
+          fallback: none
+
+      - name: Verify releasable default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo "Releases must be dispatched from $DEFAULT_BRANCH, got $GITHUB_REF" >&2
+            exit 1
+          fi
+
+          remote_default="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq .object.sha)"
+          if [[ "$remote_default" != "$GITHUB_SHA" ]]; then
+            echo "Dispatched commit $GITHUB_SHA is not current $DEFAULT_BRANCH $remote_default" >&2
+            exit 1
+          fi
+
+          ci_conclusion="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml \
+            --commit "$GITHUB_SHA" \
+            --event push \
+            --limit 1 \
+            --json conclusion \
+            --jq '.[0].conclusion')"
+          if [[ "$ci_conclusion" != "success" ]]; then
+            echo "Current $DEFAULT_BRANCH has no successful CI push run" >&2
+            exit 1
+          fi
+
+          security_conclusion="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow security.yml \
+            --commit "$GITHUB_SHA" \
+            --event push \
+            --limit 1 \
+            --json conclusion \
+            --jq '.[0].conclusion')"
+          if [[ "$security_conclusion" != "success" ]]; then
+            echo "Current $DEFAULT_BRANCH has no successful workflow-security push run" >&2
+            exit 1
+          fi
+
+      - name: Install locked dependencies
+        run: uv sync --locked --all-groups
+
+      - name: Increment version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          previous_version="$(uv version --short)"
+          uv version --bump "$RELEASE_TYPE" --no-sync
+          version="$(uv version --short)"
+          tag="v$version"
+
+          if [[ "$version" == "$previous_version" ]]; then
+            echo "Version did not change from $previous_version" >&2
+            exit 1
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release version is not stable semantic versioning: $version" >&2
+            exit 1
+          fi
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            echo "Release tag already exists: $tag" >&2
+            exit 1
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub release already exists: $tag" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build release
+        run: just build
+
+      - name: Prepare release assets
+        id: assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          wheel="factorio_docs-${VERSION}-py3-none-any.whl"
+          archive="factorio-modding-v${VERSION}.zip"
+          archive_path="dist/$archive"
+          checksum_path="$archive_path.sha256"
+
+          if ! unzip -Z1 dist/factorio-modding.zip | grep -Fx \
+            "factorio-modding/$wheel" >/dev/null; then
+            echo "Skill archive does not contain the release wheel $wheel" >&2
+            exit 1
+          fi
+
+          mv dist/factorio-modding.zip "$archive_path"
+          (
+            cd dist
+            sha256sum "$archive" > "$archive.sha256"
+          )
+
+          echo "archive_path=$archive_path" >> "$GITHUB_OUTPUT"
+          echo "checksum_path=$checksum_path" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git diff --quiet -- pyproject.toml; then
+            echo "pyproject.toml does not contain a version change" >&2
+            exit 1
+          fi
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock does not contain a version change" >&2
+            exit 1
+          fi
+          if ! git diff --quiet -- . \
+            ':(exclude)pyproject.toml' \
+            ':(exclude)uv.lock'; then
+            echo "Release preparation changed files other than version metadata" >&2
+            git status --short >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml uv.lock
+          git commit -m "🔖 Release $TAG"
+          git tag --annotate "$TAG" --message "$TAG"
+
+          remote_default="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq .object.sha)"
+          if [[ "$remote_default" != "$GITHUB_SHA" ]]; then
+            echo "$DEFAULT_BRANCH changed during release preparation: $remote_default" >&2
+            exit 1
+          fi
+
+          gh auth setup-git
+          git push --atomic origin "HEAD:refs/heads/$DEFAULT_BRANCH" "refs/tags/$TAG"
+
+      - name: Publish GitHub release
+        env:
+          ARCHIVE_PATH: ${{ steps.assets.outputs.archive_path }}
+          CHECKSUM_PATH: ${{ steps.assets.outputs.checksum_path }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            "$ARCHIVE_PATH" \
+            "$CHECKSUM_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "$TAG"
