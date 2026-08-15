@@ -1,6 +1,6 @@
 [project]
 name = "factorio-docs"
-version = "0.1.0"
+version = "0.1.1"
 description = "Generate agent-readable Factorio API documentation"
 authors = [{ name = "Chrisliebär", email = "mail@chrisliebaer.de" }]
 license = "MIT"
