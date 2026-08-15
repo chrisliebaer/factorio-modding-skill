@@ -11,9 +11,9 @@ class TestDocumentationBuilder:
     @pytest.mark.parametrize(
         ("version", "expected_file_count"),
         [
-            ("2.0.75", 1521),
-            ("2.0.76", 1521),
-            ("2.0.77", 1524),
+            ("2.0.75", 1533),
+            ("2.0.76", 1533),
+            ("2.0.77", 1537),
         ],
     )
     def test_generates_complete_pinned_stable_documentation(

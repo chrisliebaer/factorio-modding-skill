@@ -20,7 +20,7 @@ Generation may take between 20 and 40 minutes.
 * `auxiliary/`: Guides for mod structure, lifecycle, storage, migrations, libraries, noise expressions, and other topics that span the modding API. (see `index-auxiliary.md`)
 * `classes/`: Lua objects whose methods and attributes let scripts inspect and change a running game. (see `classes.md`)
 * `concepts/`: Structured values, identifiers, filters, and specifications passed to or returned by the runtime API. (see `concepts.md`)
-* `events/`: Events that scripts register for to react to game lifecycle, world changes, players, and other activity. (see `events.md`)
+* `events.md`: Events that scripts register for to react to game lifecycle, world changes, players, and other activity.
 * `prototypes/`: Schemas for the entities, items, recipes, technologies, and other definitions that mods add or change while data is loaded. (see `prototypes.md`)
 * `types/`: Reusable structures, unions, identifiers, and value formats used by prototype properties. (see `types.md`)
 * `runtime/`: The API used by control scripts to handle events and inspect or change the active game through classes, globals, functions, and shared concepts. (see `runtime/index.md`)

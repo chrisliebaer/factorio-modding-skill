@@ -136,6 +136,7 @@ class HtmlDocumentationGenerator:
 
         cls._remove_heading_permalinks(article, source)
         cls._remove_responsive_table_rows(article, source)
+        cls._normalize_single_source_srcsets(article, source)
         return article.decode_contents()
 
     @classmethod
@@ -192,6 +193,26 @@ class HtmlDocumentationGenerator:
                 message = f"Responsive table descriptions differ in {source}"
                 raise ValueError(message)
             row.decompose()
+
+    @staticmethod
+    def _normalize_single_source_srcsets(article: Tag, source: Path) -> None:
+        for image in article.select("img[srcset]"):
+            source_set = image.get("srcset")
+            if not isinstance(source_set, str):
+                message = f"Image has a non-text srcset in {source}"
+                raise TypeError(message)
+            source_candidates = source_set.split(",")
+            source_parts = source_candidates[0].split()
+            if len(source_candidates) != 1 or len(source_parts) != 1:
+                message = f"Image must have a single-path srcset in {source}: {source_set!r}"
+                raise ValueError(message)
+            existing_source = image.get("src")
+            if existing_source is not None and not isinstance(existing_source, str):
+                message = f"Image has a non-text src in {source}"
+                raise TypeError(message)
+            if existing_source is None:
+                image["src"] = source_parts[0]
+            del image["srcset"]
 
     @classmethod
     def _convert_article(cls, article_html: str) -> str:

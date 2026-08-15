@@ -88,14 +88,18 @@ class TestDefineCollectionMerger:
 
 
 class TestDocumentationImages:
-    def test_referenced_image_is_copied_into_generated_tree(self, tmp_path: Path) -> None:
+    def test_referenced_images_are_copied_into_generated_tree(self, tmp_path: Path) -> None:
         source_image, source_static_directory, output_directory = self._image_fixture(tmp_path)
+        source_root_image = source_static_directory / "space_age.png"
+        source_root_image.write_bytes(b"space age image")
 
         ImageAssetPublisher.publish(source_static_directory, output_directory)
 
         generated_image = output_directory / "static" / "images" / source_image.name
+        generated_root_image = output_directory / "static" / source_root_image.name
 
         assert generated_image.read_bytes() == source_image.read_bytes()
+        assert generated_root_image.read_bytes() == source_root_image.read_bytes()
 
     def test_rendered_image_path_resolves_after_source_is_removed(
         self,
