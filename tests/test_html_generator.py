@@ -126,6 +126,44 @@ class TestHtmlDocumentationGenerator:
 
         assert (output / "index.md").read_text(encoding="utf-8") == "Root content.\n"
 
+    def test_converts_single_source_srcset(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        (source / "document.html").write_text(
+            (
+                '<main class="panel-inset-lighter">'
+                '<img srcset="static/example.png" alt="Example">'
+                "</main>"
+            ),
+            encoding="utf-8",
+        )
+
+        output = tmp_path / "output"
+        HtmlDocumentationGenerator.generate(source, output, frozenset())
+
+        assert (output / "document.md").read_text(encoding="utf-8") == (
+            "![Example](static/example.png)\n"
+        )
+
+    def test_rejects_srcset_with_multiple_candidates(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        (source / "document.html").write_text(
+            (
+                '<main class="panel-inset-lighter">'
+                '<img srcset="small.png 1x, large.png 2x" alt="Example">'
+                "</main>"
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="single-path srcset"):
+            HtmlDocumentationGenerator.generate(
+                source,
+                tmp_path / "output",
+                frozenset(),
+            )
+
     def test_rewrites_tables_during_conversion(self, tmp_path: Path) -> None:
         source = tmp_path / "source"
         source.mkdir()
